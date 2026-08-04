@@ -31,11 +31,32 @@ export default function PantallaTVPage() {
   const [orders, setOrders] = useState<any[]>([]);
 
   useEffect(() => {
-    const s: Socket = io(WS_URL);
+    // 1. Initial fetch
     authFetch(`${API_URL}/orders`).then(r => r.json()).then(data => setOrders(data)).catch(() => {});
-    s.on('new_order', (order: any) => setOrders(prev => [order, ...prev]));
-    s.on('order_status_updated', (updated: any) => setOrders(prev => prev.map(o => o.id === updated.id ? updated : o)));
-    return () => { s.disconnect(); };
+    
+    // 2. Connect to SSE for real-time updates
+    const eventSource = new EventSource(`${API_URL}/events/kitchen`);
+
+    eventSource.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.type === 'kitchen_orders') {
+          // SSE sends the full list of PENDING/PREPARING orders
+          setOrders(payload.data);
+        }
+      } catch (err) {
+        console.error('Error parsing SSE data', err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error('SSE Error:', err);
+      // EventSource auto-reconnects by default
+    };
+
+    return () => {
+      eventSource.close();
+    };
   }, []);
 
   const boardData = useMemo(() => buildBoardData(orders), [orders]);

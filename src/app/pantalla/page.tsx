@@ -11,12 +11,21 @@ export default function PantallaPage() {
   const [orders, setOrders] = useState<any[]>([]);
 
   useEffect(() => {
+    // 1. Initial fetch
     authFetch(`${API_URL}/orders`).then(r => r.json()).then(setOrders).catch(() => {});
 
-    const socket = io(WS_URL);
-    socket.on('new_order', (order) => setOrders(prev => [order, ...prev]));
-    socket.on('order_status_updated', (updated) => setOrders(prev => prev.map(o => o.id === updated.id ? updated : o)));
-    return () => { socket.disconnect(); };
+    // 2. Connect to SSE
+    const eventSource = new EventSource(`${API_URL}/events/kitchen`);
+    eventSource.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.type === 'kitchen_orders') {
+          setOrders(payload.data);
+        }
+      } catch (err) {}
+    };
+
+    return () => { eventSource.close(); };
   }, []);
 
   const preparingOrders = orders.filter(o => o.status === 'PREPARING');
